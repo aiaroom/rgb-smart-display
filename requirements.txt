@@ -18,3 +18,4 @@ greenlet==3.2.1
 psycopg2-binary==2.9.10
 passlib
 alembic==1.16.1
+httpx
