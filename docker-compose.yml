@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ujin_postgres
+    environment:
+      POSTGRES_USER: ${DEFAULT_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-postgres}
+      POSTGRES_DB: ${DEFAULT_ADMIN_DB:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DEFAULT_ADMIN_USER:-postgres} -d ${DEFAULT_ADMIN_DB:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: .
+    container_name: ujin_backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
