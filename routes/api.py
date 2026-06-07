@@ -1,6 +1,7 @@
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any
-from sqlalchemy import or_, select, insert, delete, update
+from sqlalchemy import or_, select, insert, delete, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -312,21 +313,93 @@ async def create_complex(
             print(f"Ujin sync failed for complex {complex_obj.id}: {exc}")
 
     return complex_obj
+@router.get("/complexes/{complex_id}/", response_model=ResidentialComplexResponse)
+async def get_complex(
+    complex_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_info),
+):
+    if not user.is_admin and user.complex_id != complex_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
 
+    stmt = (
+        select(
+            ResidentialComplex,
+            func.count(func.distinct(Display.id)).label("displays_count"),
+            func.count(func.distinct(Building.id)).label("buildings_count"),
+        )
+        .outerjoin(
+            Display,
+            Display.complex_id == ResidentialComplex.id,
+        )
+        .outerjoin(
+            Building,
+            Building.complex_id == ResidentialComplex.id,
+        )
+        .where(
+            ResidentialComplex.id == complex_id,
+            ResidentialComplex.is_active.is_(True),
+        )
+        .group_by(ResidentialComplex.id)
+    )
+
+    result = await db.execute(stmt)
+    row = result.one_or_none()
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Residential complex not found",
+        )
+
+    complex_obj, displays_count, buildings_count = row
+
+    complex_data = ResidentialComplexResponse.model_validate(complex_obj)
+    complex_data.displays_count = displays_count
+    complex_data.buildings_count = buildings_count
+
+    return complex_data
 @router.get("/complexes", response_model=list[ResidentialComplexResponse])
 async def get_complexes(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_info),
 ):
-    stmt = select(ResidentialComplex).where(
-        ResidentialComplex.is_active.is_(True)
+    stmt = (
+        select(
+            ResidentialComplex,
+            func.count(func.distinct(Display.id)).label("displays_count"),
+            func.count(func.distinct(Building.id)).label("buildings_count"),
+        )
+        .outerjoin(
+            Display,
+            Display.complex_id == ResidentialComplex.id,
+        )
+        .outerjoin(
+            Building,
+            Building.complex_id == ResidentialComplex.id,
+        )
+        .where(
+            ResidentialComplex.is_active.is_(True)
+        )
+        .group_by(ResidentialComplex.id)
     )
 
     if not user.is_admin:
         stmt = stmt.where(ResidentialComplex.id == user.complex_id)
 
     result = await db.execute(stmt)
-    return result.scalars().all()
+
+    complexes = []
+    for complex_obj, displays_count, buildings_count in result.all():
+        complex_data = ResidentialComplexResponse.model_validate(complex_obj)
+        complex_data.displays_count = displays_count
+        complex_data.buildings_count = buildings_count
+        complexes.append(complex_data)
+
+    return complexes
 
 @router.post("/buildings", response_model=BuildingResponse)
 async def create_building(
@@ -353,14 +426,37 @@ async def get_buildings(
 ):
     _require_same_complex(user, complex_id)
 
-    result = await db.execute(
-        select(Building).where(
+    if not user.is_admin and user.complex_id != complex_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    stmt = (
+        select(
+            Building,
+            func.count(Display.id).label("displays_count"),
+        )
+        .outerjoin(
+            Display,
+            Display.building_id == Building.id,
+        )
+        .where(
             Building.complex_id == complex_id,
             Building.is_active.is_(True),
         )
+        .group_by(Building.id)
     )
 
-    return result.scalars().all()
+    result = await db.execute(stmt)
+
+    buildings = []
+    for building_obj, displays_count in result.all():
+        building_data = BuildingResponse.model_validate(building_obj)
+        building_data.displays_count = displays_count
+        buildings.append(building_data)
+
+    return buildings
 
 @router.get("/buildings/{building_id}", response_model=BuildingResponse)
 async def get_building(
@@ -368,24 +464,43 @@ async def get_building(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_info),
 ):
-    result = await db.execute(
-        select(Building).where(
+    stmt = (
+        select(
+            Building,
+            func.count(Display.id).label("displays_count"),
+        )
+        .outerjoin(
+            Display,
+            Display.building_id == Building.id,
+        )
+        .where(
             Building.id == building_id,
             Building.is_active.is_(True),
         )
+        .group_by(Building.id)
     )
 
-    building = result.scalar_one_or_none()
+    result = await db.execute(stmt)
+    row = result.one_or_none()
 
-    if building is None:
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Building not found",
         )
 
-    _require_same_complex(user, building.complex_id)
+    building_obj, displays_count = row
 
-    return building
+    if not user.is_admin and user.complex_id != building_obj.complex_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    building_data = BuildingResponse.model_validate(building_obj)
+    building_data.displays_count = displays_count
+
+    return building_data
 
 
 @router.patch("/buildings/{building_id}", response_model=BuildingResponse)
@@ -905,6 +1020,31 @@ async def delete_display(
     await db.commit()
 
     return None
+@router.post("/ping/{display_id}")
+async def ping_display(
+    display_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Display).where(Display.id == display_id)
+    )
+
+    display = result.scalar_one_or_none()
+
+    if not display:
+        raise HTTPException(status_code=404, detail="Display not found")
+
+    display.last_ping = datetime.now(timezone.utc)
+    display.is_online = True
+
+    await db.commit()
+    await db.refresh(display)
+
+    return {
+        "status": "online",
+        "display_id": display.id,
+        "last_ping": display.last_ping,
+    }
 
 @router.post("/templates", response_model=TemplateResponse)
 async def create_template(
@@ -912,7 +1052,7 @@ async def create_template(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_info),
 ):
-    _require_same_complex(user, payload.complex_id)
+    # _require_same_complex(user, payload.complex_id)
 
     template = Template(
         **payload.model_dump(),
@@ -928,15 +1068,15 @@ async def create_template(
 
 @router.get("/templates", response_model=list[TemplateResponse])
 async def get_templates(
-    complex_id: int,
+    # complex_id: int,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_info),
 ):
-    _require_same_complex(user, complex_id)
+    # _require_same_complex(user, complex_id)
 
     result = await db.execute(
         select(Template).where(
-            Template.complex_id == complex_id,
+            # Template.complex_id == complex_id,
             Template.is_active.is_(True),
         )
     )
@@ -962,7 +1102,7 @@ async def get_template(
             detail="Template not found",
         )
 
-    _require_same_complex(user, template.complex_id)
+    # _require_same_complex(user, template.complex_id)
 
     return template
 
@@ -986,7 +1126,7 @@ async def update_template(
             detail="Template not found",
         )
 
-    _require_same_complex(user, template.complex_id)
+    # _require_same_complex(user, template.complex_id)
 
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(template, key, value)
@@ -1015,7 +1155,7 @@ async def delete_template(
             detail="Template not found",
         )
 
-    _require_same_complex(user, template.complex_id)
+    # _require_same_complex(user, template.complex_id)
 
     template.is_active = False
     await db.commit()
@@ -1043,7 +1183,7 @@ async def send_template(
             detail="Template not found",
         )
 
-    _require_same_complex(user, template.complex_id)
+    # _require_same_complex(user, template.complex_id)
 
     if payload.target_type == "display":
         if payload.display_id is None:
@@ -1064,7 +1204,7 @@ async def send_template(
                 detail="Display not found",
             )
 
-        _require_same_complex(user, display.complex_id)
+        # _require_same_complex(user, display.complex_id)
 
         display.current_template_id = template.id
 
@@ -1099,7 +1239,7 @@ async def send_template(
                 detail="Display group not found",
             )
 
-        _require_same_complex(user, group.complex_id)
+        # _require_same_complex(user, group.complex_id)
 
         result = await db.execute(
             select(Display)
@@ -1136,7 +1276,7 @@ async def create_display_group(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_info),
 ):
-    _require_same_complex(user, payload.complex_id)
+    # _require_same_complex(user, payload.complex_id)
     if payload.building_id is not None:
         result = await db.execute(
             select(Building).where(

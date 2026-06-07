@@ -89,7 +89,7 @@ class ResidentialComplex(Base):
 
     displays = relationship("Display", back_populates="complex")
     display_groups = relationship("DisplayGroup", back_populates="complex")
-    templates = relationship("Template", back_populates="complex")
+    # templates = relationship("Template", back_populates="complex")
     content_items = relationship("ContentItem", back_populates="complex")
     emergency_states = relationship("EmergencyState", back_populates="complex")
     emergency_logs = relationship("EmergencyLog", back_populates="complex")
@@ -164,6 +164,7 @@ class Display(Base):
     current_template_id = Column(Integer, ForeignKey("templates.id"), nullable=True)
 
     is_online = Column(Boolean, default=False)
+    last_ping = Column(DateTime(timezone=True), server_default=func.now())
     is_active = Column(Boolean, default=True)
 
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
@@ -235,7 +236,6 @@ class Template(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    complex_id = Column(Integer, ForeignKey("residential_complexes.id"), nullable=False)
 
     name = Column(String, nullable=False)
 
@@ -259,7 +259,7 @@ class Template(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    complex = relationship("ResidentialComplex", back_populates="templates")
+    # complex = relationship("ResidentialComplex", back_populates="templates")
     created_by = relationship("User")
 
 

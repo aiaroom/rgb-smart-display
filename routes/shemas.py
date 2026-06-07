@@ -61,7 +61,7 @@ class UserResponse(ORMModel):
 
 
 class ResidentialComplexCreate(BaseModel):
-    name: str
+    # name: str
     address: Optional[str] = None
     ujin_complex_id: Optional[str] = None
 
@@ -72,6 +72,11 @@ class ResidentialComplexResponse(ORMModel):
     address: Optional[str] = None
     ujin_complex_id: Optional[str] = None
     is_active: bool
+    displays_count: int = 0
+    buildings_count: int = 0
+
+    class Config:
+        from_attributes = True
 
 
 class BuildingCreate(BaseModel):
@@ -92,6 +97,10 @@ class BuildingResponse(ORMModel):
     ujin_building_id: Optional[str] = None
     is_active: bool
     meta: Dict[str, Any] = Field(default_factory=dict)
+    displays_count: int = 0
+
+    class Config:
+        from_attributes = True
 
 
 class UjinTokenCreate(BaseModel):
@@ -212,7 +221,7 @@ class WidgetConfig(BaseModel):
 
 
 class TemplateCreate(BaseModel):
-    complex_id: int
+    # complex_id: int | None
     name: str
     theme: str = "dark"
     grid_config: Dict[str, Any] = Field(default_factory=lambda: {"columns": 4, "gap": 16})
@@ -233,7 +242,7 @@ class TemplateUpdate(BaseModel):
 
 class TemplateResponse(ORMModel):
     id: int
-    complex_id: int
+    # complex_id: int
     name: str
     theme: str
     grid_config: Dict[str, Any] = Field(default_factory=dict)
