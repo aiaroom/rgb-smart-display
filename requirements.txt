@@ -21,3 +21,4 @@ alembic==1.16.1
 httpx
 opencv-python-headless==4.10.0.84
 requests
+feedparser

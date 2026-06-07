@@ -32,13 +32,13 @@ def get_weather(city: str):
     except requests.RequestException:
         raise HTTPException(
             status_code=502,
-            detail="Не удалось подключиться к сервису погоды",
+            detail=f"Не удалось подключиться к сервису погоды, for {city}",
         )
 
     if response.status_code != 200:
         raise HTTPException(
             status_code=502,
-            detail="Не удалось получить погоду",
+            detail=f"Не удалось получить погоду for {city}, {response.status_code}",
         )
 
     data = response.json()

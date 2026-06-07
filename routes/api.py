@@ -19,6 +19,7 @@ from models import (
 
 )
 from routes.auth import get_current_user_info
+from routes.news import get_newsko_news
 from routes.shemas import (
     DisplayPayload,
     ResidentialComplexCreate,
@@ -43,6 +44,7 @@ from routes.shemas import (
     ContentItemResponse,
     ContentItemUpdate,
 )
+from routes.weather import get_weather
 from ujin_client import UjinClient
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -1858,6 +1860,15 @@ async def _get_display_payload_by_code(
         )
     ).scalar_one_or_none()
 
+    address = (
+        await db.execute(
+            select(ResidentialComplex.address).where(
+                ResidentialComplex.id == display.complex_id,
+                ResidentialComplex.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+
     building = None
     if display.building_id is not None:
         building = (
@@ -1939,6 +1950,7 @@ async def _get_display_payload_by_code(
     ).scalar_one_or_none()
 
     ujin_data = await _build_ujin_payload_from_db(db, display)
+    weather = get_weather(str(address))
 
     await db.commit()
     await db.refresh(display)
@@ -1953,6 +1965,7 @@ async def _get_display_payload_by_code(
         "emergency": emergency,
         "ujin_data": ujin_data,
         "generated_at": now,
+        "weather": weather,
     }
 
 

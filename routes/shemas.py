@@ -190,6 +190,7 @@ class DisplayResponse(ORMModel):
     is_active: bool
     last_seen_at: Optional[datetime] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
+    has_emergency: bool = False
 
 
 class DisplayGroupCreate(BaseModel):
@@ -349,6 +350,7 @@ class DisplayPayload(BaseModel):
     content_items: List[ContentItemResponse] = Field(default_factory=list)
     emergency: Optional[EmergencyStateResponse] = None
     ujin_data: Dict[str, Any] = Field(default_factory=dict)
+    weather: Dict[str, Any] = Field(default_factory=dict)
 
 class UjinSyncRequest(BaseModel):
     complex_id: int
